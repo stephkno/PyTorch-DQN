@@ -72,10 +72,10 @@ update_counter = 0
 hidden = 512
 
 in_features = p_states * 4
-epsilon = 0.5
+epsilon = 0.6
 
 frameskip = 1
-rate = 0.0001
+rate = 0.00001
 gamma = 0.5
 
 n_actions = env.action_space.n
