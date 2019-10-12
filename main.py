@@ -19,19 +19,21 @@ pygame.init()
 Transition = namedtuple('Transition',
                         ('state', 'next_state', 'reward', 'qvalues', 'paction', 'action'))
 
+
 def preprocess_frame(state):
-   # print(state)
-    #state = state[60:, :]
-    #state = numpy.array(state)
-    #state = (numpy.sum(state, axis=2) / 3.0) / 255.0
-    #state = ((state > 100) * 1.0)
-    #state = cv2.resize(state, (64, 64))
-    #state = torch.tensor(state).permute(2,0,1).float()/255.0
-    #state = 1 - state
-    #cv2.imshow("", state.permute(1,2,0).numpy())
-    #cv2.waitKey(1)
+    # print(state)
+    # state = state[60:, :]
+    # state = numpy.array(state)
+    # state = (numpy.sum(state, axis=2) / 3.0) / 255.0
+    # state = ((state > 100) * 1.0)
+    # state = cv2.resize(state, (64, 64))
+    # state = torch.tensor(state).permute(2,0,1).float()/255.0
+    # state = 1 - state
+    # cv2.imshow("", state.permute(1,2,0).numpy())
+    # cv2.waitKey(1)
     state = state['image']
-    return torch.tensor(state).unsqueeze(0).float().view(1,-1)
+    return torch.tensor(state).unsqueeze(0).float().view(1, -1)
+
 
 parser = OptionParser()
 parser.add_option(
@@ -56,11 +58,13 @@ for i in range(init_episode_frameskip):
 
 p_states = 1
 
+
 def render_env(state):
-    state = numpy.transpose(numpy.array(state), (1,0))
-    state = cv2.resize(state, (10*width, 10*height), interpolation=cv2.INTER_AREA)
+    state = numpy.transpose(numpy.array(state), (1, 0))
+    state = cv2.resize(state, (10 * width, 10 * height), interpolation=cv2.INTER_AREA)
     cv2.imshow("state", state)
     cv2.waitKey(1)
+
 
 # env.render()
 BATCH_SIZE = 500
@@ -83,7 +87,7 @@ gamma = 0.9
 n_states = 4
 in_features = 589
 n_actions = env.action_space.n
-#n_actions = len(env.action_value_map)
+# n_actions = len(env.action_value_map)
 lives = 1
 action = 0
 
@@ -92,16 +96,20 @@ first = True
 
 replay_memory = []
 
+
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     lr = rate * (0.1 ** (epoch // 30))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
+
 def one_hot(x):
     a = torch.zeros(n_actions)
     a[x] = 1.0
     return a
+
+
 class Agent(torch.nn.Module):
     def __init__(self):
         super(Agent, self).__init__()
@@ -111,9 +119,10 @@ class Agent(torch.nn.Module):
 
     def forward(self, x, train):
         b = x.shape[0]
-        x,self.hidden = self.net(x.view(1,b,-1),self.hidden)
+        x, self.hidden = self.net(x.view(1, b, -1), self.hidden)
         self.hidden = self.hidden.detach()
-        return self.output(x.view(b,-1))
+        return self.output(x.view(b, -1))
+
 
 def weights_init(m):
     classname = m.__class__.__name__
@@ -123,6 +132,7 @@ def weights_init(m):
     if classname.find('Conv2d') != -1:
         torch.nn.init.normal_(m.weight.data, 1.0, 0.5)
         torch.nn.fill(m.weight.bias, 0.0)
+
 
 agent = Agent().float()
 
@@ -140,6 +150,7 @@ try:
 except:
     print("New agent.")
 
+
 def discount(rewards):
     R = 0.0
     discount_rewards = []
@@ -154,8 +165,8 @@ def discount(rewards):
 
     return discount_rewards
 
-def learn(gamma,steps):
 
+def learn(gamma, steps):
     if len(replay_memory) < BATCH_SIZE:
         return 0.0
 
@@ -170,17 +181,18 @@ def learn(gamma,steps):
     action = torch.tensor([b.action for b in batch])
     l = 0.0
 
-    target_agent.hidden = torch.zeros(n_layers,len(state_batch),hidden)
+    target_agent.hidden = torch.zeros(n_layers, len(state_batch), hidden)
     next_state_values = target_agent.forward(next_states_batch.float(), True)
     # steps x q_values
-    next_state_values = next_state_values.squeeze(1)[:,action]
+    next_state_values = next_state_values.squeeze(1)[:, action]
 
     state_values = (next_state_values * gamma) + reward_batch.unsqueeze(0).float()
 
     c_q = c_q.squeeze(1).squeeze(1)
-    loss = torch.nn.MSELoss()(c_q[:,paction], state_values)
+    loss = torch.nn.MSELoss()(c_q[:, paction], state_values)
     l += loss.item()
 
+    # Optimize the model
     optimizer.zero_grad()
     loss.backward(retain_graph=True)
     optimizer.step()
@@ -189,15 +201,17 @@ def learn(gamma,steps):
     del batch
     del state_batch
     del reward_batch
-    del expected_state_action_values
+    del state_values
     del next_states_batch
     del c_q
     del next_state_values
-    #torch.cuda.empty_cache()
+    # torch.cuda.empty_cache()
 
     return l
 
+
 total_reward = 0.0
+
 
 def savemodel():
     a = input("Save? <Y/N>")
@@ -210,9 +224,13 @@ def savemodel():
         }, modelname)
     env.close()
 
+
 anim = ["|", "\\", "-", "/"]
+
+
 def push_replay_memory(*args):
     replay_memory.append(Transition(*args))
+
 
 train = True
 maxsteps = 0
@@ -233,7 +251,7 @@ lines_cleared = 0
 action = 0
 paction = 0
 confidence = 1.0
-clock = torch.zeros(1,1)
+clock = torch.zeros(1, 1)
 
 state = preprocess_frame(state)
 states = [state for _ in range(n_states)]
@@ -253,7 +271,7 @@ while True:
     anxiety = torch.nn.Sigmoid()(torch.randn(1))
 
     if render:
-        #render_env(state)
+        # render_env(state)
         env.render()
 
     if clock > 0:
@@ -261,8 +279,8 @@ while True:
     else:
         clock += 1
 
-    inp = torch.cat(states,dim=1)
-    inp = torch.cat((inp, clock),dim=1)
+    inp = torch.cat(states, dim=1)
+    inp = torch.cat((inp, clock), dim=1)
     new_q = agent.forward(inp, False)
 
     if steps % 10 == 0:
@@ -296,7 +314,7 @@ while True:
     states.append(state)
     if len(states) > n_states:
         del states[0]
-        
+
     state = new_state
 
     paction = action
@@ -306,7 +324,7 @@ while True:
     if steps > maxsteps:
         maxsteps = steps
 
-    confidence = steps/(maxsteps+1)
+    confidence = steps / (maxsteps + 1)
     loss = learn(gamma, steps)
 
     if done:
@@ -316,11 +334,12 @@ while True:
             env._max_episode_steps = episode_steps
         sum_loss += loss
 
-        print("|Game/Epoch {}/{} | Steps ({} - {}) | Score {} | Highest: {} | Training: {}| Loss:{} | Confidence:{}".format(games, epoch, steps, total_steps,
-                                                                                                score, highest, train, sum_loss, confidence))
+        print(
+            "|Game/Epoch {}/{} | Steps ({} - {}) | Score {} | Highest: {} | Training: {}| Loss:{} | Confidence:{}".format(
+                games, epoch, steps, total_steps,
+                score, highest, train, sum_loss, confidence))
 
-
-        #for p in agent.parameters():
+        # for p in agent.parameters():
         #    print(p.grad)
 
         if loss > 0.0:
@@ -347,17 +366,16 @@ while True:
         for i in range(init_episode_frameskip):
             state, _, _, _ = env.step(0)
 
-        #state = resize(state, (128, 128, 3))
-        #states = [torch.tensor(state) for _ in range(p_states)]
+        # state = resize(state, (128, 128, 3))
+        # states = [torch.tensor(state) for _ in range(p_states)]
 
         action = torch.tensor([0]).float()
         p_action = torch.tensor([0]).float()
 
-        #if score > highest:
+        # if score > highest:
         #    highest = score
         steps = 0
         reward = 0.0
         sum_loss = 0.0
         update_counter = 0
         total_reward = 0.0
-
