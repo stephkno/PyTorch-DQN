@@ -1,4 +1,3 @@
-#!/Users/stephen/miniconda3/bin/python3
 import torch
 import torchvision
 import gym
@@ -30,7 +29,7 @@ def preprocess_frame(state):
 env = gym.make('SpaceInvaders-v4')
 
 init_episode_frameskip = 90
-episode_steps = 500
+episode_steps = 1000
 env._max_episode_steps = episode_steps
 
 state = env.reset()
@@ -40,7 +39,6 @@ for i in range(init_episode_frameskip):
 
 p_states = 1
 
-
 def render_env(state):
     state = numpy.transpose(numpy.array(state), (1, 0))
     state = cv2.resize(state, (10 * width, 10 * height), interpolation=cv2.INTER_AREA)
@@ -48,7 +46,7 @@ def render_env(state):
     cv2.waitKey(1)
 
 # env.render()
-BATCH_SIZE = 1024
+BATCH_SIZE = 256
 REPLAY_MEMORY_SIZE = 5000
 
 rewards = []
@@ -77,7 +75,6 @@ render = False
 first = True
 
 replay_memory = []
-
 
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
@@ -126,7 +123,7 @@ agent = Agent().float()
 weights_init(agent)
 target_agent = copy.copy(agent)
 
-optimizer = torch.optim.Adam(lr=rate, params=target_agent.parameters())
+optimizer = torch.optim.Adam(lr=rate, params=agent.parameters())
 
 # try to load saved agent, if not found start new
 try:
@@ -154,7 +151,7 @@ def discount(rewards):
 
 
 def learn(gamma):
-    if len(replay_memory) < BATCH_SIZE:
+    if len(replay_memory) < REPLAY_MEMORY_SIZE:
         return 0.0
 
     sys.stdout.flush()
@@ -180,6 +177,8 @@ def learn(gamma):
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
+
+    replay_memory.clear()
 
     del loss, batch, state_batch, reward_batch, state_values, next_states_batch, c_q, next_state_values
     return l
@@ -243,6 +242,8 @@ while True:
     if render:
         # render_env(state)
         env.render(mode='human')
+        if steps % 10 == 0:
+            print("Confidence:{}".format(confidence))
 
     q = new_q
 
@@ -250,9 +251,6 @@ while True:
 
     inp = torch.cat(states, dim=1)
     new_q = agent.forward(inp, False).view(-1)
-
-    #print(confidence)
-    #print("Greedy:",float(anxiety)<float(confidence))
 
     if anxiety > confidence:
         action = env.action_space.sample()
@@ -280,7 +278,7 @@ while True:
         if done:
             break
 
-    confidence *= gamma
+    confidence *= 0.99
     confidence += reward
 
     push_replay_memory(inp, old_state, reward, old_q.view(-1), int(paction), int(action))
@@ -308,19 +306,19 @@ while True:
         print(
             "|Game/Epoch {}/{} | Steps ({} - {}) | Score {} | Highest: {} | Attitude:{}".format(
                 games, epoch, steps, total_steps,
-                score, highest, torch.tensor(attitude).mean()))
+                score, highest, torch.prod(torch.tensor(attitude),0)))
         attitude = []
 
         # for p in agent.parameters():
         #    print(p.grad)
 
         if len(replay_memory) >= BATCH_SIZE:
-            sum_loss = learn(gamma, steps)
+            sum_loss = learn(gamma)
             epoch += 1
             replay_memory = []
 
             if epoch % target_agent_update_interval == 0:
-                agent.load_state_dict(target_agent.state_dict())
+                target_agent.load_state_dict(agent.state_dict())
                 print("\nTarget net update.\n")
 
         score = 0
@@ -337,14 +335,9 @@ while True:
         for i in range(init_episode_frameskip):
             state, _, _, _ = env.step(0)
 
-        # state = resize(state, (128, 128, 3))
-        # states = [torch.tensor(state) for _ in range(p_states)]
-
         action = torch.tensor([0]).float()
         p_action = torch.tensor([0]).float()
 
-        # if score > highest:
-        #    highest = score
         steps = 0
         reward = 0.0
         sum_loss = 0.0
