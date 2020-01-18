@@ -37,12 +37,12 @@ class Agent(torch.nn.Module):
     def __init__(self):
         super(Agent, self).__init__()
         self.model = torch.nn.Sequential(
-            torch.nn.Linear(128, 128),
-	        torch.nn.ReLU(),
-            torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, 32),
-            torch.nn.ReLU(),
+		torch.nn.Linear(128, 128),
+		torch.nn.ReLU(),
+            	torch.nn.Linear(128, 64),
+           	torch.nn.ReLU(),
+            	torch.nn.Linear(64, 32),
+           	torch.nn.ReLU(),
         )
         self.head = torch.nn.Linear(32, env.action_space.n)
 
