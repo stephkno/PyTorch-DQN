@@ -139,7 +139,7 @@ while True:
     #reset game
     state = env.reset()
     env._max_episode_steps = 1000
-    render = True
+    render = test
 
     if test:
         print("Loading newest agent")
