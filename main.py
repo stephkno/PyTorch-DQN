@@ -29,7 +29,7 @@ GAMMA = 0.99
 rate = 0.001
 TARGET_INTERVAL = 50
 UPDATE_INTERVAL = 4000
-batch_size = 64
+batch_size = 512
 
 #define neural network model
 class Agent(torch.nn.Module):
@@ -37,11 +37,11 @@ class Agent(torch.nn.Module):
         super(Agent, self).__init__()
         self.model = torch.nn.Sequential(
             torch.nn.Linear(128, 128),
-	        torch.nn.Tanh(),
+	        torch.nn.ReLU(),
             torch.nn.Linear(128, 64),
-            torch.nn.Tanh(),
+            torch.nn.ReLU(),
             torch.nn.Linear(64, 32),
-            torch.nn.Tanh(),
+            torch.nn.ReLU(),
         )
         self.head = torch.nn.Linear(32, env.action_space.n)
 
