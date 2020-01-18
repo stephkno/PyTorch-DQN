@@ -101,7 +101,7 @@ class Memory():
 
                 #run mean squared error against q targets and predicted q values
                 loss = -1*(targets - values).pow(2).mean()
-                print("{} - Loss:{}.format(e,loss.item())
+                print("{} - Loss:{}".format(e,loss.item()))
 
                 optimizer.zero_grad()
                 loss.backward()
