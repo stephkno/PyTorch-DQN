@@ -25,7 +25,7 @@ epochs = 1000
 episode = 1
 init_action = 1
 GAMMA = 0.99
-rate = 0.0005
+rate = 0.01
 TARGET_INTERVAL = 50
 UPDATE_INTERVAL = 10
 batch_size = 100
@@ -57,7 +57,7 @@ class Memory():
         self.reset()
         self.batch_size = batch_size
         self.cap = 5000
-        self.n = 100
+        self.n = 25
 
     def push(self, *args):
         self.buffer.append(Transition(*args))
@@ -100,8 +100,8 @@ class Memory():
                 values = torch.gather(values, dim=1, index=torch.tensor(action).unsqueeze(1)).squeeze(1)
 
                 #run mean squared error against q targets and predicted q values
-                loss = (targets - values).pow(2).sum()
-                print(loss)
+                loss = -1*(targets - values).pow(2).mean()
+                print(loss.item())
 
                 optimizer.zero_grad()
                 loss.backward()
