@@ -1,6 +1,5 @@
 import gym
 import torch
-import numpy as np
 import sys
 from collections import namedtuple
 import random
