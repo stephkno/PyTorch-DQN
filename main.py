@@ -11,7 +11,6 @@ if len(sys.argv) > 1 and sys.argv[1].lower() == "test":
 else:
     test = False
 
-
 #### Deep Q Network
 # seemingly should converge after updating over a few million game steps
 #
@@ -181,7 +180,7 @@ while True:
         #check if lost life (only for atari games)
         if 'ale.lives' in info and info["ale.lives"] < lives:
             lives = info["ale.lives"]
-            done = True
+            reward = -1.0
         else:
             score += reward
             total_score += reward
