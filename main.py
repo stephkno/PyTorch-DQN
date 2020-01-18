@@ -25,24 +25,22 @@ epochs = 1000
 episode = 1
 init_action = 1
 GAMMA = 0.99
-rate = 0.001
-#update target agent parameters every n games
-TARGET_INTERVAL = 5000
-#update parameters every n games
-UPDATE_INTERVAL = 50
-batch_size = 512
+rate = 0.0005
+TARGET_INTERVAL = 50
+UPDATE_INTERVAL = 10
+batch_size = 100
 
 #define neural network model
 class Agent(torch.nn.Module):
     def __init__(self):
         super(Agent, self).__init__()
         self.model = torch.nn.Sequential(
-		torch.nn.Linear(128, 128),
-		torch.nn.ReLU(),
-            	torch.nn.Linear(128, 64),
-           	torch.nn.ReLU(),
-            	torch.nn.Linear(64, 32),
-           	torch.nn.ReLU(),
+            torch.nn.Linear(128, 128),
+	        torch.nn.ReLU(),
+            torch.nn.Linear(128, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 32),
+            torch.nn.ReLU(),
         )
         self.head = torch.nn.Linear(32, env.action_space.n)
 
@@ -59,7 +57,7 @@ class Memory():
         self.reset()
         self.batch_size = batch_size
         self.cap = 5000
-        self.n = 4
+        self.n = 100
 
     def push(self, *args):
         self.buffer.append(Transition(*args))
@@ -89,7 +87,7 @@ class Memory():
 
                 #get max q values for 'next state' from new agent policy
                 next_state = torch.stack(next_state)
-                next_q_values = target_agent.forward(next_state).detach().max(1)[0]
+                next_q_values = agent.forward(next_state).detach().max(1)[0]
                 #zero out last step rewards
                 next_q_values = next_q_values * dones
                 #target value is what we want the neural network to predict
@@ -103,6 +101,7 @@ class Memory():
 
                 #run mean squared error against q targets and predicted q values
                 loss = (targets - values).pow(2).sum()
+                print(loss)
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -140,7 +139,7 @@ while True:
     #reset game
     state = env.reset()
     env._max_episode_steps = 1000
-    render = test
+    render = True
 
     if test:
         print("Loading newest agent")
@@ -161,14 +160,13 @@ while True:
             target_agent.eval()
         q_values = agent.forward(state)
 
-        #entropy sampling - as Q values become more deterministic
-        #entropy value goes down
-        entropy = torch.distributions.Categorical(q_values).entropy()
+        #confidence sampling
+        confidence = q_values.max()
         #random number [0,1]
         r = torch.rand(1)
 
         #if random value higher than entropy value
-        if r > entropy:
+        if r > confidence:
             #choose greedy action (exploit)
             action = torch.argmax(q_values)
         else:
@@ -212,6 +210,7 @@ while True:
             memory.learn()
         if episode % TARGET_INTERVAL == 0:
             #update agent parameters
+            print("Swap parameters")
             agent.load_state_dict(target_agent.state_dict())
             save_model(agent)
 
