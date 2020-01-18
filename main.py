@@ -1,10 +1,11 @@
+#!/Users/stephen/miniconda3/bin/python
 import gym
 import torch
 import sys
 from collections import namedtuple
 import random
 
-env = gym.make("Breakout-ram-v0")
+env = gym.make("MsPacman-ram-v0")
 
 if len(sys.argv) > 1 and sys.argv[1].lower() == "test":
     test = True
@@ -24,10 +25,10 @@ epoch = 0
 epochs = 1000
 episode = 1
 init_action = 1
-GAMMA = 0.99
-rate = 0.01
-TARGET_INTERVAL = 50
-UPDATE_INTERVAL = 10
+GAMMA = 0.999
+rate = 0.005
+TARGET_INTERVAL = 25
+UPDATE_INTERVAL = 25
 batch_size = 100
 
 #define neural network model
@@ -36,11 +37,11 @@ class Agent(torch.nn.Module):
         super(Agent, self).__init__()
         self.model = torch.nn.Sequential(
             torch.nn.Linear(128, 128),
-	        torch.nn.ReLU(),
+	        torch.nn.Tanh(),
             torch.nn.Linear(128, 64),
-            torch.nn.ReLU(),
+            torch.nn.Tanh(),
             torch.nn.Linear(64, 32),
-            torch.nn.ReLU(),
+            torch.nn.Tanh(),
         )
         self.head = torch.nn.Linear(32, env.action_space.n)
 
@@ -56,8 +57,8 @@ class Memory():
         self.buffer = []
         self.reset()
         self.batch_size = batch_size
-        self.cap = 5000
-        self.n = 25
+        self.cap = 30000
+        self.n = 150
 
     def push(self, *args):
         self.buffer.append(Transition(*args))
@@ -117,7 +118,7 @@ if test:
     agent.load_state_dict(torch.load("./checkpoint.pth"))
 
 #define optimizer with learning rate (gradient step size)
-optimizer = torch.optim.Adam(params=target_agent.parameters(), lr=rate)
+optimizer = torch.optim.Adagrad(params=target_agent.parameters(), lr=rate)
 
 def save_model(model):
     print("Saving model.")
@@ -130,11 +131,10 @@ print("Initializing replay buffer...")
 #run forever
 while True:
     done = False
-    if episode % 10 == 0:
-        print("Episode {}".format(episode))
 
     score = 0.0
     total_score = 0.0
+    confidence = 1.0
 
     #reset game
     state = env.reset()
@@ -160,22 +160,28 @@ while True:
             target_agent.eval()
         q_values = agent.forward(state)
 
-        #confidence sampling
-        confidence = q_values.max()
         #random number [0,1]
         r = torch.rand(1)
 
         #if random value higher than entropy value
-        if r > confidence:
+        if r < confidence:
             #choose greedy action (exploit)
             action = torch.argmax(q_values)
         else:
             #choose random action (explore)
             action = env.action_space.sample()
 
+        if test:
+            action = torch.argmax(q_values)
+
         #take step in environment
         next_state, reward, done, info = env.step(action)
         next_state = torch.tensor(next_state).float()
+
+        confidence *= 0.95
+        confidence += reward
+        if confidence < 0.001: confidence = 0.0
+        confidence = max(min(confidence, 1.0), 0.2)
 
         #check if lost life (only for atari games)
         if 'ale.lives' in info and info["ale.lives"] < lives:
@@ -198,7 +204,7 @@ while True:
 
     #display episode score
     if score > 0.0:
-        print("Score:{}".format(score))
+        print("Episode {} Score:{}".format(episode, score))
     #update log
     if total_score > highest:
         highest = total_score
@@ -208,6 +214,8 @@ while True:
         if episode % UPDATE_INTERVAL == 0:
             #update parameters
             memory.learn()
+            render = not render
+
         if episode % TARGET_INTERVAL == 0:
             #update agent parameters
             print("Swap parameters")
