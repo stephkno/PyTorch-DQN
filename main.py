@@ -87,7 +87,7 @@ class Memory():
 
                 #get max q values for 'next state' from new agent policy
                 next_state = torch.stack(next_state)
-                next_q_values = agent.forward(next_state).detach().max(1)[0]
+                next_q_values = target_agent.forward(next_state).detach().max(1)[0]
                 #zero out last step rewards
                 next_q_values = next_q_values * dones
                 #target value is what we want the neural network to predict
