@@ -26,8 +26,10 @@ episode = 1
 init_action = 1
 GAMMA = 0.99
 rate = 0.001
-TARGET_INTERVAL = 50
-UPDATE_INTERVAL = 5000
+#update target agent parameters every n games
+TARGET_INTERVAL = 5000
+#update parameters every n games
+UPDATE_INTERVAL = 50
 batch_size = 512
 
 #define neural network model
