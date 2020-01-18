@@ -1,4 +1,3 @@
-#!/Users/stephen/miniconda3/bin/python
 import gym
 import torch
 import sys
@@ -81,7 +80,7 @@ class Memory():
             print("\nUpdate Parameters")
 
             #run n epochs
-            for _ in range(self.n):
+            for e in range(self.n):
                 #random sample experiences
                 state, action, reward, next_state, dones = zip(*memory.sample())
                 dones = torch.tensor(dones)*1.0
@@ -102,7 +101,7 @@ class Memory():
 
                 #run mean squared error against q targets and predicted q values
                 loss = -1*(targets - values).pow(2).mean()
-                print(loss.item())
+                print("{} - Loss:{}.format(e,loss.item())
 
                 optimizer.zero_grad()
                 loss.backward()
