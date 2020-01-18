@@ -163,15 +163,12 @@ while True:
         r = torch.rand(1)
 
         #if random value higher than entropy value
-        if r < confidence:
+        if r < confidence or test:
             #choose greedy action (exploit)
             action = torch.argmax(q_values)
         else:
             #choose random action (explore)
             action = env.action_space.sample()
-
-        if test:
-            action = torch.argmax(q_values)
 
         #take step in environment
         next_state, reward, done, info = env.step(action)
