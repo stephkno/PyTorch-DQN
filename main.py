@@ -27,7 +27,7 @@ init_action = 1
 GAMMA = 0.99
 rate = 0.001
 TARGET_INTERVAL = 50
-UPDATE_INTERVAL = 4000
+UPDATE_INTERVAL = 5000
 batch_size = 512
 
 #define neural network model
@@ -116,7 +116,7 @@ if test:
     agent.load_state_dict(torch.load("./checkpoint.pth"))
 
 #define optimizer with learning rate (gradient step size)
-optimizer = torch.optim.Adam(params=agent.parameters(), lr=rate)
+optimizer = torch.optim.Adam(params=target_agent.parameters(), lr=rate)
 
 def save_model(model):
     print("Saving model.")
