@@ -1,4 +1,3 @@
-#!/Users/stephen/miniconda3/bin/python
 import gym
 import torch
 import sys
