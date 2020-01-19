@@ -1,3 +1,4 @@
+#!/Users/stephen/miniconda3/bin/python
 import gym
 import torch
 import sys
@@ -12,6 +13,10 @@ else:
     test = False
 
 #### Deep Q Network
+# seemingly should converge after updating over a few million game steps
+#
+#
+# ? ? ?
 # manual seed for random initial weight generation
 torch.manual_seed(0)
 
@@ -21,7 +26,7 @@ epochs = 1000
 episode = 1
 init_action = 1
 GAMMA = 0.99
-rate = 0.00001
+rate = 0.00005
 TARGET_INTERVAL = 100
 UPDATE_INTERVAL = 1
 batch_size = 64
@@ -194,7 +199,8 @@ while True:
             total_score += reward
 
         #render env for observing agent
-        env.render()
+        if render:
+            env.render()
 
         #prime next state
         state = next_state
