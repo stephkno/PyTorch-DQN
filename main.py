@@ -1,4 +1,3 @@
-#!/Users/stephen/miniconda3/bin/python
 import gym
 import torch
 import sys
@@ -13,10 +12,6 @@ else:
     test = False
 
 #### Deep Q Network
-# seemingly should converge after updating over a few million game steps
-#
-#
-# ? ? ?
 # manual seed for random initial weight generation
 torch.manual_seed(0)
 
