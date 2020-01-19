@@ -1,3 +1,4 @@
+#!/Users/stephen/miniconda3/bin/python
 import gym
 import torch
 import sys
@@ -12,10 +13,6 @@ else:
     test = False
 
 #### Deep Q Network
-# seemingly should converge after updating over a few million game steps
-#
-#
-# ? ? ?
 # manual seed for random initial weight generation
 torch.manual_seed(0)
 
@@ -102,7 +99,7 @@ class Memory():
                 values = torch.gather(values, dim=1, index=torch.tensor(action).unsqueeze(1))
 
                 #run mean squared error against q targets and predicted q values
-                loss = (targets - values).pow(2).mean()
+                loss = -1*(targets - values).pow(2).mean()
                 print("E{} - Loss:{}".format(n,loss.item()))
 
                 optimizer.zero_grad()
