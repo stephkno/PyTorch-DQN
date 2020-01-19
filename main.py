@@ -4,7 +4,7 @@ import sys
 from collections import namedtuple
 import random
 
-env = gym.make("MsPacman-ram-v0")
+env = gym.make("CartPole-v0")
 
 if len(sys.argv) > 1 and sys.argv[1].lower() == "test":
     test = True
@@ -24,28 +24,27 @@ epoch = 0
 epochs = 1000
 episode = 1
 init_action = 1
-GAMMA = 0.999
-rate = 0.005
-TARGET_INTERVAL = 25
-UPDATE_INTERVAL = 25
-batch_size = 100
+GAMMA = 0.99
+rate = 0.00001
+TARGET_INTERVAL = 100
+UPDATE_INTERVAL = 1
+batch_size = 64
 
 #define neural network model
 class Agent(torch.nn.Module):
     def __init__(self):
         super(Agent, self).__init__()
         self.model = torch.nn.Sequential(
-            torch.nn.Linear(128, 128),
-	        torch.nn.Tanh(),
-            torch.nn.Linear(128, 64),
+            torch.nn.Linear(4, 128),
             torch.nn.Tanh(),
-            torch.nn.Linear(64, 32),
+            torch.nn.Linear(128, 128),
             torch.nn.Tanh(),
         )
-        self.head = torch.nn.Linear(32, env.action_space.n)
+        self.head = torch.nn.Linear(128, env.action_space.n)
 
     def forward(self, x):
-        y = self.model(x/255)
+        x = x
+        y = self.model(x)
         return self.head(y)
 
 Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
@@ -56,8 +55,8 @@ class Memory():
         self.buffer = []
         self.reset()
         self.batch_size = batch_size
-        self.cap = 30000
-        self.n = 150
+        self.cap = 10000
+        self.n = 1
 
     def push(self, *args):
         self.buffer.append(Transition(*args))
@@ -80,44 +79,51 @@ class Memory():
             print("\nUpdate Parameters")
 
             #run n epochs
-            for e in range(self.n):
+            for n in range(self.n):
                 #random sample experiences
                 state, action, reward, next_state, dones = zip(*memory.sample())
                 dones = torch.tensor(dones)*1.0
 
-                #get max q values for 'next state' from new agent policy
                 next_state = torch.stack(next_state)
-                next_q_values = agent.forward(next_state).detach().max(1)[0]
+
+                state = torch.stack(state)
+
+                #get max q values for 'next state' from new agent policy
+                next_q_values = torch.max(agent.forward(next_state).detach(),dim=1)[0]
+
                 #zero out last step rewards
-                next_q_values = next_q_values * dones
                 #target value is what we want the neural network to predict
                 targets = torch.tensor(reward) + (GAMMA * next_q_values)
+                targets = targets * dones
 
                 #get q values for 'this state' from old agent policy
-                state = torch.stack(state)
                 values = agent.forward(state)
                 #get each q value for each action from sampled experiences
-                values = torch.gather(values, dim=1, index=torch.tensor(action).unsqueeze(1)).squeeze(1)
+                values = torch.gather(values, dim=1, index=torch.tensor(action).unsqueeze(1))
 
                 #run mean squared error against q targets and predicted q values
-                loss = -1*(targets - values).pow(2).mean()
-                print("{} - Loss:{}".format(e,loss.item()))
+                loss = (targets - values).pow(2).mean()
+                print("E{} - Loss:{}".format(n,loss.item()))
 
                 optimizer.zero_grad()
                 loss.backward()
-                optimizer.step()
+            optimizer.step()
+        else:
+            print(memory.length, memory.batch_size)
+
 
 memory = Memory(batch_size)
 agent = Agent()
 target_agent = Agent()
 print(agent)
 
-if test:
-    print("Load agent")
+def load_agent():
+    print("Loading agent")
     agent.load_state_dict(torch.load("./checkpoint.pth"))
 
+
 #define optimizer with learning rate (gradient step size)
-optimizer = torch.optim.Adagrad(params=target_agent.parameters(), lr=rate)
+optimizer = torch.optim.RMSprop(params=agent.parameters(), lr=rate)
 
 def save_model(model):
     print("Saving model.")
@@ -137,12 +143,12 @@ while True:
 
     #reset game
     state = env.reset()
+
     env._max_episode_steps = 1000
     render = test
 
     if test:
-        print("Loading newest agent")
-        agent.load_state_dict(torch.load("./checkpoint.pth"))
+        load_agent()
 
     #initial step to get lives info
     _, _, _, info = env.step(init_action)
@@ -150,6 +156,7 @@ while True:
         lives = info["ale.lives"]
     state = torch.tensor(state).float()
     o_state = state
+    print("Episode {}".format(episode))
 
     #run episode
     while not done:
@@ -157,21 +164,24 @@ while True:
         #get Q values
         if test:
             target_agent.eval()
+
         q_values = agent.forward(state)
+        if test:
+            confidence = 0.05
 
         #random number [0,1]
         r = torch.rand(1)
 
         #if random value higher than entropy value
-        if r < confidence or test:
+        if r < confidence:
             #choose greedy action (exploit)
             action = torch.argmax(q_values)
         else:
             #choose random action (explore)
-            action = env.action_space.sample()
+            action = torch.distributions.Categorical(torch.nn.Softmax(dim=-1)(q_values)).sample()
 
         #take step in environment
-        next_state, reward, done, info = env.step(action)
+        next_state, reward, done, info = env.step(int(action))
         next_state = torch.tensor(next_state).float()
 
         confidence *= 0.95
@@ -182,14 +192,13 @@ while True:
         #check if lost life (only for atari games)
         if 'ale.lives' in info and info["ale.lives"] < lives:
             lives = info["ale.lives"]
-            reward = -1.0
+            reward = 0.0
         else:
             score += reward
             total_score += reward
 
         #render env for observing agent
-        if render:
-            env.render()
+        env.render()
 
         #prime next state
         state = next_state
@@ -197,6 +206,8 @@ while True:
         #push this step experience to replay memory
         memory.push(state, action, reward, next_state, (not done))
         step += 1
+
+
 
     #display episode score
     if score > 0.0:
@@ -215,12 +226,11 @@ while True:
         if episode % TARGET_INTERVAL == 0:
             #update agent parameters
             print("Swap parameters")
-            agent.load_state_dict(target_agent.state_dict())
+            target_agent.load_state_dict(agent.state_dict())
             save_model(agent)
 
         #display stats
-        if total_score > 0.0:
-            print("Total Score: {} Highest: {} Steps: {}".format(total_score, highest, step))
+        print("Total Score: {} Highest: {} Steps: {}".format(total_score, highest, step))
         total_score = 0.0
 
     #next episode
