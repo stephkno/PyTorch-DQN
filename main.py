@@ -1,236 +1,174 @@
 import gym
 import torch
-import sys
-from collections import namedtuple
 import random
+import sys
+from multiprocessing import Process, Manager
+from matplotlib import pyplot as plt
+from collections import namedtuple
+from coach import Coach
 
-env = gym.make("CartPole-v0")
+test = False
+new = False
+resume = False
 
 if len(sys.argv) > 1 and sys.argv[1].lower() == "test":
     test = True
-else:
-    test = False
+elif len(sys.argv) > 1 and sys.argv[1].lower() == "new":
+    new = True
+elif len(sys.argv) > 1 and sys.argv[1].lower() == "resume":
+    resume = True
 
-#### Deep Q Network
-# manual seed for random initial weight generation
 torch.manual_seed(0)
 
-#hyperparameters
-epoch = 0
-epochs = 1000
-episode = 1
-init_action = 1
-GAMMA = 0.99
-rate = 0.00005
-TARGET_INTERVAL = 100
-UPDATE_INTERVAL = 1
-batch_size = 64
-
-#define neural network model
+#### PyTorch Actor Critic Model
 class Agent(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, in_size=4, hidden=64, out=2):
         super(Agent, self).__init__()
-        self.model = torch.nn.Sequential(
-            torch.nn.Linear(4, 128),
+        self.actor = torch.nn.Sequential(
+            torch.nn.Linear(in_size, hidden),
             torch.nn.Tanh(),
-            torch.nn.Linear(128, 128),
+            torch.nn.Linear(hidden, hidden),
             torch.nn.Tanh(),
+            torch.nn.Linear(hidden, out),
         )
-        self.head = torch.nn.Linear(128, env.action_space.n)
 
-    def forward(self, x):
-        x = x
-        y = self.model(x)
-        return self.head(y)
+    def act(self, state):
+        action = self.actor(state.float())
+        return action
 
-Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
-#replay memory for episodes
-class Memory():
-    def __init__(self, batch_size):
-        super(Memory, self).__init__()
-        self.buffer = []
-        self.reset()
-        self.batch_size = batch_size
-        self.cap = 10000
-        self.n = 1
+def preprocess(state):
+    #state extraction for Pong RAM
+    #state = state[[0x31, 0x36, 0x38, 0x3A, 0x3C]]
+    #             ball x  ball y bvx  bvxy  paddle y
+    return torch.tensor(state).float()/255
 
-    def push(self, *args):
-        self.buffer.append(Transition(*args))
-        if len(self.buffer) > self.cap:
-            del self.buffer[0]
-        else:
-            self.length += 1
+def learn():
+    state, action, reward, next_state, _ = zip(*random.sample(memory, BATCH_SIZE))
 
-    def sample(self):
-        return random.sample(self.buffer, self.batch_size)
+    state = torch.stack(state)
+    next_state = torch.stack(next_state)
+    action = torch.tensor(action)
+    reward = torch.tensor(reward)
 
-    def reset(self):
-        self.buffer = []
-        self.length = 0
-        self.total_loss = 0
+    q_values = agent.act(state)
+    q_values = torch.gather(q_values, index=action.unsqueeze(1), dim=1)
 
-    def learn(self):
-        #only update if there are enough samples
-        if memory.length >= memory.batch_size:
-            print("\nUpdate Parameters")
+    next_q_values = target_agent.act(next_state).detach()
+    next_q_values = next_q_values.max(1)[0]
 
-            #run n epochs
-            for n in range(self.n):
-                #random sample experiences
-                state, action, reward, next_state, dones = zip(*memory.sample())
-                dones = torch.tensor(dones)*1.0
+    target = reward + GAMMA * next_q_values
+    target = target.unsqueeze(1)
 
-                next_state = torch.stack(next_state)
+    loss = (target - q_values).pow(2).sum().div(2)
 
-                state = torch.stack(state)
+    optimizer.zero_grad()
+    loss.backward()
 
-                #get max q values for 'next state' from new agent policy
-                next_q_values = torch.max(agent.forward(next_state).detach(),dim=1)[0]
+    for p in agent.parameters():
+        p.grad.data.clamp_(-1.0, 1.0)
 
-                #zero out last step rewards
-                #target value is what we want the neural network to predict
-                targets = torch.tensor(reward) + (GAMMA * next_q_values)
-                targets = targets * dones
+    optimizer.step()
 
-                #get q values for 'this state' from old agent policy
-                values = agent.forward(state)
-                #get each q value for each action from sampled experiences
-                values = torch.gather(values, dim=1, index=torch.tensor(action).unsqueeze(1))
-
-                #run mean squared error against q targets and predicted q values
-                loss = -1*(targets - values).pow(2).mean()
-                print("E{} - Loss:{}".format(n,loss.item()))
-
-                optimizer.zero_grad()
-                loss.backward()
-            optimizer.step()
-        else:
-            print(memory.length, memory.batch_size)
-
-
-memory = Memory(batch_size)
-agent = Agent()
-target_agent = Agent()
-print(agent)
-
+#loading/saving checkpoint for testing
 def load_agent():
     print("Loading agent")
     agent.load_state_dict(torch.load("./checkpoint.pth"))
+def save_model():
+    print(" ~!  ---- Saving model ---- !~")
+    torch.save(agent.state_dict(), './checkpoint.pth')
 
+env_name = "Breakout-ram-v0"
+env = gym.make(env_name)
+if test:
+    env._max_episode_steps = 99999
+manager = Manager()
 
-#define optimizer with learning rate (gradient step size)
+#hyperparameters
+step = 0
+highest = -9999
+lives = 0
+init_frameskip = 1
+epoch = 0
+episode = 1
+init_action = 1
+GAMMA = 0.99
+BATCH_SIZE = 32
+BATCH_MIN = 10000
+BUFFER_CAP = 100000
+UPDATE_INTERVAL = 50
+rate = 0.0001
+betas = (0.9, 0.999)
+plot = not test
+K = 1
+total_steps = 0
+
+in_features = 128
+hidden = 256
+actions = 3
+max_episode_steps = 5000
+
+buffer = manager.list()
+episodes = manager.list()
+
+env._max_episode_steps = max_episode_steps
+
+EPSILON_START = 0.01
+EPSILON_MIN = 0.01
+EPSILON_STEPS = 5000
+
+memory = []
+
+#create objects
+transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
+
+def reward_shaping(reward, done):
+    #reward = 0 if not done else -1
+    return reward
+
+agent = Agent(in_size=in_features, hidden=hidden, out=actions)
+target_agent = Agent(in_size=in_features, hidden=hidden, out=actions)
 optimizer = torch.optim.RMSprop(params=agent.parameters(), lr=rate)
 
-def save_model(model):
-    print("Saving model.")
-    torch.save(model.state_dict(), './checkpoint.pth')
+if resume or test:
+    load_agent()
 
-step = 0
-highest = 0
-print("Initializing replay buffer...")
+target_agent.load_state_dict(agent.state_dict())
 
-#run forever
+coach = Coach(reward_shaping=reward_shaping, transition=transition)
+print(agent)
+
+action_dict = {0:1, 1:2, 2:3}
+
+#def plot(total_score):
+    #x, y = zip(*running_scores)
+    #plt.plot(x, y)
+    #plt.draw()
+    #plt.pause(0.0000001)
+
+workers = []
+
+#training loop
 while True:
-    done = False
-
-    score = 0.0
-    total_score = 0.0
-    confidence = 1.0
-
-    #reset game
-    state = env.reset()
-
-    env._max_episode_steps = 1000
-    render = test
-
     if test:
         load_agent()
+    #decrement epsilon value
+    epsilon = EPSILON_MIN + (EPSILON_START - EPSILON_MIN) * torch.exp(
+        torch.tensor(-1. * episode / EPSILON_STEPS))
 
-    #initial step to get lives info
-    _, _, _, info = env.step(init_action)
-    if 'ale.lives' in info:
-        lives = info["ale.lives"]
-    state = torch.tensor(state).float()
-    o_state = state
-    print("Episode {}".format(episode))
-
-    #run episode
-    while not done:
-
-        #get Q values
-        if test:
-            target_agent.eval()
-
-        q_values = agent.forward(state)
-        if test:
-            confidence = 0.05
-
-        #random number [0,1]
-        r = torch.rand(1)
-
-        #if random value higher than entropy value
-        if r < confidence:
-            #choose greedy action (exploit)
-            action = torch.argmax(q_values)
-        else:
-            #choose random action (explore)
-            action = torch.distributions.Categorical(torch.nn.Softmax(dim=-1)(q_values)).sample()
-
-        #take step in environment
-        next_state, reward, done, info = env.step(int(action))
-        next_state = torch.tensor(next_state).float()
-
-        confidence *= 0.95
-        confidence += reward
-        if confidence < 0.001: confidence = 0.0
-        confidence = max(min(confidence, 1.0), 0.2)
-
-        #check if lost life (only for atari games)
-        if 'ale.lives' in info and info["ale.lives"] < lives:
-            lives = info["ale.lives"]
-            reward = 0.0
-        else:
-            score += reward
-            total_score += reward
-
-        #render env for observing agent
-        if render:
-            env.render()
-
-        #prime next state
-        state = next_state
-
-        #push this step experience to replay memory
-        memory.push(state, action, reward, next_state, (not done))
-        step += 1
-
-
-
-    #display episode score
-    if score > 0.0:
-        print("Episode {} Score:{}".format(episode, score))
-    #update log
-    if total_score > highest:
-        highest = total_score
-
-    #don't change parameters if testing
-    if not test:
-        if episode % UPDATE_INTERVAL == 0:
-            #update parameters
-            memory.learn()
-            render = not render
-
-        if episode % TARGET_INTERVAL == 0:
-            #update agent parameters
-            print("Swap parameters")
-            target_agent.load_state_dict(agent.state_dict())
-            save_model(agent)
-
-        #display stats
-        print("Total Score: {} Highest: {} Steps: {}".format(total_score, highest, step))
-        total_score = 0.0
-
-    #next episode
+    epsilon = max(epsilon, EPSILON_MIN)
+    memory, score, steps = coach.run_episode(agent, env, memory, episode, preprocess, epsilon, test, action_dict, learn)
     episode += 1
+    total_steps += steps
+
+    if score > highest:
+        highest = score
+        if not test:
+            save_model()
+
+    print("Episode{} Score{} Highest{} Steps{}".format(episode, score, highest, total_steps))
+
+    if not test:
+        if episode % UPDATE_INTERVAL:
+            target_agent.load_state_dict(agent.state_dict())
 
 env.close()
