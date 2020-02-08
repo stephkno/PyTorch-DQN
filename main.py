@@ -37,9 +37,6 @@ class Agent(torch.nn.Module):
         return action
 
 def preprocess(state):
-    #state extraction for Pong RAM
-    #state = state[[0x31, 0x36, 0x38, 0x3A, 0x3C]]
-    #             ball x  ball y bvx  bvxy  paddle y
     return torch.tensor(state).float()/255
 
 def learn():
@@ -77,7 +74,11 @@ def save_model():
     print(" ~!  ---- Saving model ---- !~")
     torch.save(agent.state_dict(), './checkpoint.pth')
 
-env_name = "Breakout-ram-v0"
+if test:
+    env_name = "Breakout-ramNoFrameskip-v0"
+else:
+    env_name = "Breakout-ram-v0"
+
 env = gym.make(env_name)
 if test:
     env._max_episode_steps = 99999
@@ -91,12 +92,12 @@ init_frameskip = 1
 epoch = 0
 episode = 1
 init_action = 1
-GAMMA = 0.99
+GAMMA = 1.0
 BATCH_SIZE = 32
 BATCH_MIN = 10000
 BUFFER_CAP = 100000
 UPDATE_INTERVAL = 50
-rate = 0.0001
+rate = 0.0005
 betas = (0.9, 0.999)
 plot = not test
 K = 1
@@ -112,9 +113,14 @@ episodes = manager.list()
 
 env._max_episode_steps = max_episode_steps
 
-EPSILON_START = 0.01
-EPSILON_MIN = 0.01
-EPSILON_STEPS = 5000
+if test:
+    EPSILON_START = 0.01
+    EPSILON_MIN = 0.01
+    EPSILON_STEPS = 5000
+else:
+    EPSILON_START = 0.5
+    EPSILON_MIN = 0.01
+    EPSILON_STEPS = 5000
 
 memory = []
 
@@ -139,13 +145,18 @@ print(agent)
 
 action_dict = {0:1, 1:2, 2:3}
 
-#def plot(total_score):
-    #x, y = zip(*running_scores)
-    #plt.plot(x, y)
-    #plt.draw()
-    #plt.pause(0.0000001)
-
 workers = []
+running_scores = []
+
+def plot(steps, score):
+    running_scores.append([steps,score])
+    if len(running_scores) > 2:
+        del running_scores[0]
+
+    x, y = zip(*running_scores)
+    plt.plot(x, y)
+    plt.draw()
+    plt.pause(0.0000001)
 
 #training loop
 while True:
@@ -164,6 +175,10 @@ while True:
         highest = score
         if not test:
             save_model()
+            memory.clear()
+
+    if not test and plot:
+        plot(total_steps, score)
 
     print("Episode{} Score{} Highest{} Steps{}".format(episode, score, highest, total_steps))
 
