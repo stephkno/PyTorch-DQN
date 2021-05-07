@@ -75,11 +75,11 @@ def learn():
 def load_agent():
     print("Loading agent")
     # file = "/run/user/1000/gvfs/sftp:host=6502.local/Users/stephen/Documents/code/pytorch/reinforement_learning/checkpoint.pth"
-    file = "./checkpoint.pth"
+    file = "./agents/breakout.pth"
     agent.load_state_dict(torch.load(file))
 def save_model():
     print(" ~!  ---- Saving model ---- !~")
-    torch.save(agent.state_dict(), './checkpoint.pth')
+    torch.save(agent.state_dict(), './agents/last_checkpoint.pth')
 
 env_name = "Breakout-ramNoFrameskip-v0"
 env = gym.make(env_name)
