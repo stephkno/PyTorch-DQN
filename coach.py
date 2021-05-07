@@ -41,7 +41,7 @@ class Coach():
         # episode loop
         while not done:
             y = agent.act(state)
-            
+
             if torch.rand(1) > epsilon:
                 action = int(torch.argmax(y))
             else:
@@ -52,7 +52,7 @@ class Coach():
                 next_state, r, done, info = env.step(action_dict[action])
                 reward += r
             next_state = preprocess(next_state)
-            
+
             #print(step, score)
             #reward = max(min(reward, 1.0),-1.0)
 
