@@ -28,7 +28,7 @@ class Coach():
         state = preprocess(state)
         render = test
         if test:
-            epsilon = 0.01
+            epsilon = 0.0
 
         print("Episode: {} Epsilon:{}".format(episode, epsilon))
 
@@ -41,7 +41,7 @@ class Coach():
         # episode loop
         while not done:
             y = agent.act(state)
-
+            
             if torch.rand(1) > epsilon:
                 action = int(torch.argmax(y))
             else:
@@ -52,8 +52,9 @@ class Coach():
                 next_state, r, done, info = env.step(action_dict[action])
                 reward += r
             next_state = preprocess(next_state)
-
-            reward = max(min(reward, 1.0),-1.0)
+            
+            #print(step, score)
+            #reward = max(min(reward, 1.0),-1.0)
 
             lost_life = False if not done else True
 
@@ -69,8 +70,7 @@ class Coach():
                 reward = self.reward_shaping(reward, done)
             if render:
                 env.render()
-                time.sleep(0.001)
-
+                time.sleep(0.01)
             # prime next state
             if not test:
                 memory.append(self.transition(state, action, reward, next_state, not lost_life))
