@@ -18,13 +18,13 @@ class Coach():
         self.cap = 100000
         self.transition = transition
 
-    def run_episode(self, agent, env, memory, episode, preprocess, epsilon, test, action_dict, learn):
+    def run_episode(self, agent, env, memory, episode, preprocess, epsilon, test, learn):
         done = False
         score = 0.0
         step = 0
 
         # reset game
-        state = env.reset()
+        state, info = env.reset()
         state = preprocess(state)
         render = test
         if test:
@@ -34,7 +34,7 @@ class Coach():
 
         # initial framekskip to get lives
         for i in range(self.init_frameskip):
-            _, _, _, info = env.step(self.init_action)
+            _, _, _, _, info = env.step(self.init_action)
             if 'ale.lives' in info:
                 lives = info["ale.lives"]
 
@@ -45,11 +45,11 @@ class Coach():
             if torch.rand(1) > epsilon:
                 action = int(torch.argmax(y))
             else:
-                action = random.choice(range(len(action_dict.keys())))
+                action = env.action_space.sample()
 
             reward = 0
             for i in range(self.frameskip):
-                next_state, r, done, info = env.step(action_dict[action])
+                next_state, r, done, _, info = env.step(action)
                 reward += r
             next_state = preprocess(next_state)
 
@@ -68,9 +68,7 @@ class Coach():
 
             if not self.reward_shaping == None:
                 reward = self.reward_shaping(reward, done)
-            if render:
-                env.render()
-                time.sleep(0.01)
+
             # prime next state
             if not test:
                 memory.append(self.transition(state, action, reward, next_state, not lost_life))

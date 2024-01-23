@@ -41,15 +41,16 @@ def preprocess(state):
     # state extraction for Pong RAM
     # state = state[[0x31, 0x36, 0x38, 0x3A, 0x3C]]
     #              ball x  ball y bvx  bvxy  paddle y
-    return torch.tensor(state).float()/255
+    return torch.tensor(state).float().cuda()/255
 
+# define an update function for learning
 def learn():
     state, action, reward, next_state, _ = zip(*random.sample(memory, BATCH_SIZE))
 
     state = torch.stack(state)
     next_state = torch.stack(next_state)
-    action = torch.tensor(action)
-    reward = torch.tensor(reward)
+    action = torch.tensor(action).cuda()
+    reward = torch.tensor(reward).cuda()
 
     q_values = agent.act(state)
     q_values = torch.gather(q_values, index=action.unsqueeze(1), dim=1)
@@ -61,7 +62,6 @@ def learn():
     target = target.unsqueeze(1)
 
     loss = (target - q_values).pow(2).sum().div(2)
-    print("Loss:{}".format(loss))
 
     optimizer.zero_grad()
     loss.backward()
@@ -75,19 +75,22 @@ def learn():
 def load_agent():
     print("Loading agent")
     # file = "/run/user/1000/gvfs/sftp:host=6502.local/Users/stephen/Documents/code/pytorch/reinforement_learning/checkpoint.pth"
-    file = "./agents/breakout.pth"
+    file = "./agents/last_checkpoint.pth"
     agent.load_state_dict(torch.load(file))
 def save_model():
     print(" ~!  ---- Saving model ---- !~")
     torch.save(agent.state_dict(), './agents/last_checkpoint.pth')
 
-env_name = "Breakout-ramNoFrameskip-v0"
-env = gym.make(env_name)
+# define training environment
+env_name = "Breakout-ram-v4"
 
 if test:
+    env = gym.make(env_name, render_mode="human")
     env._max_episode_steps = 99999
+else:
+    env = gym.make(env_name)
 
-# hyperparameters
+# define hyperparameters
 step = 0
 highest = -9999
 lives = 0
@@ -101,14 +104,13 @@ BATCH_MIN = 10000
 BUFFER_CAP = 100000
 UPDATE_INTERVAL = 50
 rate = 0.0001
-betas = (0.9, 0.999)
 plot = not test
 K = 1
 total_steps = 0
 
 in_features = 128
 hidden = 256
-actions = 3
+actions = env.action_space.n
 max_episode_steps = 1000
 
 if test:
@@ -129,8 +131,8 @@ def reward_shaping(reward, done):
     # reward = 0 if not done else -1
     return reward
 
-agent = Agent(in_size=in_features, hidden=hidden, out=actions)
-target_agent = Agent(in_size=in_features, hidden=hidden, out=actions)
+agent = Agent(in_size=in_features, hidden=hidden, out=actions).cuda()
+target_agent = Agent(in_size=in_features, hidden=hidden, out=actions).cuda()
 optimizer = torch.optim.RMSprop(params=agent.parameters(), lr=rate)
 
 if resume or test:
@@ -140,8 +142,6 @@ target_agent.load_state_dict(agent.state_dict())
 
 coach = Coach(reward_shaping=reward_shaping, transition=transition)
 print(agent)
-
-action_dict = {0:1, 1:2, 2:3}
 
 # def plot(total_score):
     # x, y = zip(*running_scores)
@@ -160,7 +160,7 @@ while True:
         torch.tensor(-1. * episode / EPSILON_STEPS))
 
     epsilon = max(epsilon, EPSILON_MIN)
-    memory, score, steps = coach.run_episode(agent, env, memory, episode, preprocess, epsilon, test, action_dict, learn)
+    memory, score, steps = coach.run_episode(agent, env, memory, episode, preprocess, epsilon, test, learn)
     episode += 1
     total_steps += steps
 
