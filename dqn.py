@@ -1,36 +1,59 @@
 #!/usr/local/bin/python3
-import gym
+import gymnasium as gym
+import ale_py
+
+gym.register_envs(ale_py)
+
 import torch
 import random
 import sys
+
 from multiprocessing import Process, Manager
 from matplotlib import pyplot as plt
 from collections import namedtuple
 from coach import Coach
+import argparse
 
-test = False
-new = False
-resume = False
+parser = argparse.ArgumentParser(prog="DQN", description="Deep Q Network")
 
-if len(sys.argv) > 1 and sys.argv[1].lower() == "test":
-    test = True
-elif len(sys.argv) > 1 and sys.argv[1].lower() == "new":
-    new = True
-elif len(sys.argv) > 1 and sys.argv[1].lower() == "resume":
-    resume = True
+parser.add_argument('environment')
+parser.add_argument('-t', '--test')
 
+args = parser.parse_args()
+
+env_name = sys.argv[1]
 torch.manual_seed(0)
+
+# Check CUDA availability
+print(f"PyTorch version: {torch.__version__}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"CUDA version: {torch.version.cuda}")
+    print(f"Number of GPUs: {torch.cuda.device_count()}")
+    print(f"GPU name: {torch.cuda.get_device_name(0)}")
+    print(f"Current device: {torch.cuda.current_device()}")
+else:
+    print("CUDA not available - using CPU")
+print("-" * 50)
 
 # # # #  PyTorch DQN Model
 class Agent(torch.nn.Module):
-    def __init__(self, in_size=4, hidden=64, out=2):
+    def __init__(self, in_size=4, hidden=64, layers=1, out=2):
         super(Agent, self).__init__()
+
+        modules = []
+        modules.append(torch.nn.Linear(in_size, hidden))
+        modules.append(torch.nn.Tanh())
+        
+        for _ in range(layers):
+            modules.append(torch.nn.Linear(hidden, hidden))
+            modules.append(torch.nn.Tanh()
+        )
+        
+        modules.append(torch.nn.Linear(hidden, out))
+        
         self.actor = torch.nn.Sequential(
-            torch.nn.Linear(in_size, hidden),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden, hidden),
-            torch.nn.Tanh(),
-            torch.nn.Linear(hidden, out),
+            *modules
         )
 
     def act(self, state):
@@ -73,22 +96,24 @@ def learn():
 
 # loading/saving checkpoint for testing
 def load_agent():
-    print("Loading agent")
-    # file = "/run/user/1000/gvfs/sftp:host=6502.local/Users/stephen/Documents/code/pytorch/reinforement_learning/checkpoint.pth"
-    file = "./agents/last_checkpoint.pth"
-    agent.load_state_dict(torch.load(file))
+    file = "./agents/" + env_name
+    print("Loading ",file)
+    try:
+        agent.load_state_dict(torch.load(file))
+        target_agent.load_state_dict(agent.state_dict())
+    except:
+        print("Failed to load " + file)
+
 def save_model():
     print(" ~!  ---- Saving model ---- !~")
-    torch.save(agent.state_dict(), './agents/last_checkpoint.pth')
+    file = "./agents/" + env_name
+    torch.save(agent.state_dict(), file)
 
-# define training environment
-env_name = "Breakout-ram-v4"
-
-if test:
-    env = gym.make(env_name, render_mode="human")
+if args.test:
+    env = gym.make(env_name, render_mode="human", obs_type="ram")
     env._max_episode_steps = 99999
 else:
-    env = gym.make(env_name)
+    env = gym.make(env_name, obs_type="ram")
 
 # define hyperparameters
 step = 0
@@ -99,46 +124,47 @@ epoch = 0
 episode = 1
 init_action = 1
 GAMMA = 0.99
-BATCH_SIZE = 32
-BATCH_MIN = 10000
-BUFFER_CAP = 100000
-UPDATE_INTERVAL = 50
-rate = 0.0001
-plot = not test
+BATCH_SIZE = 128
+UPDATE_INTERVAL = 1000
+rate = 0.00025
 K = 1
 total_steps = 0
 
-in_features = 128
+print(env.observation_space.shape)
+
+in_features = env.observation_space.shape[-1]
 hidden = 256
+hidden_layers = 4
 actions = env.action_space.n
 max_episode_steps = 1000
 
-if test:
+if args.test:
     max_episode_steps = 999999
 
 env._max_episode_steps = max_episode_steps
 
-EPSILON_START = 0.05
-EPSILON_MIN = 0.01
-EPSILON_STEPS = 5000
+EPSILON_START = 1.0
+EPSILON_MIN = 0.00
+EPSILON_STEPS = 50000
 
 memory = []
+
 
 # create objects
 transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'done'))
 
 def reward_shaping(reward, done):
-    # reward = 0 if not done else -1
+    # Penalize if game hasn't started after N steps
+    if coach.step < 30 and reward == 0:
+        return -0.01  # Small penalty for not starting
     return reward
 
-agent = Agent(in_size=in_features, hidden=hidden, out=actions).cuda()
-target_agent = Agent(in_size=in_features, hidden=hidden, out=actions).cuda()
+agent = Agent(in_size=in_features, hidden=hidden, layers=hidden_layers, out=actions).cuda()
+target_agent = Agent(in_size=in_features, hidden=hidden, layers=hidden_layers, out=actions).cuda()
+
 optimizer = torch.optim.RMSprop(params=agent.parameters(), lr=rate)
 
-if resume or test:
-    load_agent()
-
-target_agent.load_state_dict(agent.state_dict())
+load_agent()
 
 coach = Coach(reward_shaping=reward_shaping, transition=transition)
 print(agent)
@@ -153,26 +179,27 @@ workers = []
 
 # main loop
 while True:
-    if test:
+    if args.test:
         load_agent()
+
     # decrement epsilon value
     epsilon = EPSILON_MIN + (EPSILON_START - EPSILON_MIN) * torch.exp(
         torch.tensor(-1. * episode / EPSILON_STEPS))
 
     epsilon = max(epsilon, EPSILON_MIN)
-    memory, score, steps = coach.run_episode(agent, env, memory, episode, preprocess, epsilon, test, learn)
+    memory, score, steps = coach.run_episode(agent, env, memory, episode, preprocess, epsilon, args.test, learn)
     episode += 1
     total_steps += steps
 
     if score > highest:
         highest = score
-        if not test:
-            save_model()
 
-    print("Episode{} Score{} Highest{} Steps{}".format(episode, score, highest, total_steps))
+    print("Episode: {} Score: {} Highest: {} Steps: {}".format(episode, score, highest, total_steps))
 
-    if not test:
-        if episode % UPDATE_INTERVAL:
+    if not args.test:
+        if episode % UPDATE_INTERVAL == 0:
+            print("Update target agent")
             target_agent.load_state_dict(agent.state_dict())
+            save_model()
 
 env.close()

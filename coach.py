@@ -1,6 +1,6 @@
 import torch
 import random
-import gym
+import gymnasium as gym
 import time
 import numpy as np
 
@@ -13,9 +13,10 @@ class Coach():
         self.reward_shaping = reward_shaping
         self.update_interval = 1000
         self.total_step = 0
+        self.step = 0
         self.GAMMA = 0.99
         self.min = 10000
-        self.cap = 100000
+        self.cap = 1000000
         self.transition = transition
 
     def run_episode(self, agent, env, memory, episode, preprocess, epsilon, test, learn):
@@ -26,11 +27,11 @@ class Coach():
         # reset game
         state, info = env.reset()
         state = preprocess(state)
-        render = test
-        if test:
-            epsilon = 0.0
 
-        print("Episode: {} Epsilon:{}".format(episode, epsilon))
+        if test:
+            epsilon = 0.01
+
+        print("Epsilon:{}".format(epsilon))
 
         # initial framekskip to get lives
         for i in range(self.init_frameskip):
@@ -74,10 +75,9 @@ class Coach():
                 memory.append(self.transition(state, action, reward, next_state, not lost_life))
                 if len(memory) > self.cap:
                     del memory[0]
-                if len(memory) > self.min:
+                if len(memory) > self.min and epsilon > 0.0:
                     learn()
 
             state = next_state
 
-        print("Episode: {} Score: {}".format(episode, score))
         return memory, score, step
