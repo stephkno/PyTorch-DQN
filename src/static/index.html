@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DQN Training Debug</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            color: #00ff00;
+        }
+        
+        .controls {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #00ff00;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #00ff00;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 8px;
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        button {
+            background: #00ff00;
+            color: #1a1a1a;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            border-radius: 3px;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #00cc00;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #00ff00;
+        }
+        
+        .status-item {
+            margin-bottom: 10px;
+        }
+        
+        .status-label {
+            color: #ffff00;
+            display: inline-block;
+            width: 150px;
+        }
+        
+        .log {
+            background: #2a2a2a;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #00ff00;
+            height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid #00ff00;
+            padding-left: 10px;
+        }
+        
+        .log-entry.error {
+            border-left-color: #ff0000;
+            color: #ff0000;
+        }
+        
+        .log-entry.success {
+            border-left-color: #00ff00;
+            color: #00ff00;
+        }
+        
+        .log-entry.info {
+            border-left-color: #ffff00;
+            color: #ffff00;
+        }
+        
+        .log-entry.error .traceback {
+            display: block;
+            margin-top: 5px;
+            padding: 10px;
+            background: #3a0000;
+            border-radius: 3px;
+            font-size: 10px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+        
+        .timestamp {
+            color: #888;
+            font-size: 10px;
+        }
+        
+        .connection-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff0000;
+            margin-right: 5px;
+        }
+        
+        .connection-status.connected {
+            background: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 DQN Training Debug Console</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="serverUrl">Server URL:</label>
+                <input type="text" id="serverUrl" value="http://localhost:5000">
+            </div>
+            
+            <div class="control-group">
+                <label for="environment">Environment:</label>
+                <input type="text" id="environment" value="CartPole-v1" placeholder="e.g., CartPole-v1, ALE/Pong-v5">
+            </div>
+            
+            <button id="startBtn">Start Training</button>
+            <button id="stopBtn" disabled>Stop Training</button>
+            <button id="refreshBtn">Refresh State</button>
+            <button id="clearLogBtn">Clear Log</button>
+        </div>
+        
+        <div class="status">
+            <h2>Status</h2>
+            <div class="status-item">
+                <span class="status-label">Connection:</span>
+                <span class="connection-status" id="connectionStatus"></span>
+                <span id="connectionText">Disconnected</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Training:</span>
+                <span id="trainingStatus">Idle</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Run ID:</span>
+                <span id="runId">-</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Episode:</span>
+                <span id="episode">-</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Total Steps:</span>
+                <span id="totalSteps">-</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Highest Score:</span>
+                <span id="highestScore">-</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Memory Size:</span>
+                <span id="memorySize">-</span>
+            </div>
+        </div>
+        
+        <div class="log" id="log">
+            <div class="log-entry info">
+                <span class="timestamp">[00:00:00]</span> Console initialized. Ready to connect.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const serverUrl = document.getElementById('serverUrl');
+        const environmentInput = document.getElementById('environment');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const clearLogBtn = document.getElementById('clearLogBtn');
+        const log = document.getElementById('log');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const connectionText = document.getElementById('connectionText');
+        
+        let eventSource = null;
+        let isTraining = false;
+
+        function getTimestamp() {
+            const now = new Date();
+            return now.toTimeString().split(' ')[0];
+        }
+
+        function addLog(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="timestamp">[${getTimestamp()}]</span> ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStatus(data) {
+            if (data.is_training !== undefined) {
+                document.getElementById('trainingStatus').textContent = data.is_training ? 'Running' : 'Idle';
+                isTraining = data.is_training;
+                startBtn.disabled = data.is_training;
+                stopBtn.disabled = !data.is_training;
+            }
+            
+            if (data.current_run) {
+                document.getElementById('runId').textContent = data.current_run.run_id || '-';
+                document.getElementById('episode').textContent = data.current_run.episode || '-';
+                document.getElementById('totalSteps').textContent = data.current_run.total_steps || '-';
+                document.getElementById('highestScore').textContent = data.current_run.highest_score || '-';
+                document.getElementById('memorySize').textContent = data.current_run.memory_size || '-';
+            }
+        }
+
+        function connectSSE() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            addLog('Connecting to SSE stream...', 'info');
+            eventSource = new EventSource(`${serverUrl.value}/updates`);
+
+            eventSource.onopen = () => {
+                addLog('SSE connected', 'success');
+                connectionStatus.classList.add('connected');
+                connectionText.textContent = 'Connected';
+            };
+
+            eventSource.onerror = () => {
+                addLog('SSE connection error', 'error');
+                connectionStatus.classList.remove('connected');
+                connectionText.textContent = 'Disconnected';
+            };
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'connected') {
+                        addLog('Received connection confirmation', 'success');
+                    } else if (data.type === 'episode_complete') {
+                        const msg = `Episode ${data.episode}: Score=${data.score}, Steps=${data.steps}, Total=${data.total_steps}`;
+                        addLog(msg, data.new_high_score ? 'success' : 'info');
+                        
+                        document.getElementById('episode').textContent = data.episode;
+                        document.getElementById('totalSteps').textContent = data.total_steps;
+                        document.getElementById('highestScore').textContent = data.highest_score;
+                        document.getElementById('memorySize').textContent = data.memory_size;
+                    } else if (data.type === 'training_stopped') {
+                        addLog('Training stopped', 'info');
+                        isTraining = false;
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                    } else if (data.type === 'error') {
+                        const errorMsg = `<strong>ERROR (${data.error_type}):</strong> ${data.error}`;
+                        const logEntry = document.createElement('div');
+                        logEntry.className = 'log-entry error';
+                        logEntry.innerHTML = `<span class="timestamp">[${getTimestamp()}]</span> ${errorMsg}`;
+                        
+                        if (data.traceback) {
+                            const traceback = document.createElement('div');
+                            traceback.className = 'traceback';
+                            traceback.textContent = data.traceback;
+                            logEntry.appendChild(traceback);
+                        }
+                        
+                        log.appendChild(logEntry);
+                        log.scrollTop = log.scrollHeight;
+                        
+                        // Reset training state on error
+                        isTraining = false;
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                    }
+                } catch (e) {
+                    addLog(`Failed to parse SSE message: ${e.message}`, 'error');
+                }
+            };
+        }
+
+        async function startTraining() {
+            const env = environmentInput.value.trim();
+            if (!env) {
+                addLog('Please enter an environment name', 'error');
+                return;
+            }
+
+            addLog(`Starting training on ${env}...`, 'info');
+            
+            try {
+                const response = await fetch(`${serverUrl.value}/run`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ environment: env })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog(`Training started: ${data.run_id}`, 'success');
+                    document.getElementById('runId').textContent = data.run_id;
+                    isTraining = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                } else {
+                    // Display error with traceback if available
+                    let errorMsg = `Error: ${data.error}`;
+                    const logEntry = document.createElement('div');
+                    logEntry.className = 'log-entry error';
+                    logEntry.innerHTML = `<span class="timestamp">[${getTimestamp()}]</span> ${errorMsg}`;
+                    
+                    if (data.traceback) {
+                        const traceback = document.createElement('div');
+                        traceback.className = 'traceback';
+                        traceback.textContent = data.traceback;
+                        logEntry.appendChild(traceback);
+                    }
+                    
+                    log.appendChild(logEntry);
+                    log.scrollTop = log.scrollHeight;
+                }
+            } catch (e) {
+                addLog(`Request failed: ${e.message}`, 'error');
+            }
+        }
+
+        async function stopTraining() {
+            addLog('Stopping training...', 'info');
+            
+            try {
+                const response = await fetch(`${serverUrl.value}/stop`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog('Training stop requested', 'success');
+                } else {
+                    addLog(`Error: ${data.error}`, 'error');
+                }
+            } catch (e) {
+                addLog(`Request failed: ${e.message}`, 'error');
+            }
+        }
+
+        async function refreshState() {
+            addLog('Refreshing state...', 'info');
+            
+            try {
+                const response = await fetch(`${serverUrl.value}/get`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    addLog('State refreshed', 'success');
+                    updateStatus(data);
+                } else {
+                    addLog('Failed to refresh state', 'error');
+                }
+            } catch (e) {
+                addLog(`Request failed: ${e.message}`, 'error');
+            }
+        }
+
+        function clearLog() {
+            log.innerHTML = '<div class="log-entry info"><span class="timestamp">[' + 
+                           getTimestamp() + ']</span> Log cleared.</div>';
+        }
+
+        startBtn.addEventListener('click', startTraining);
+        stopBtn.addEventListener('click', stopTraining);
+        refreshBtn.addEventListener('click', refreshState);
+        clearLogBtn.addEventListener('click', clearLog);
+
+        // Auto-connect on load
+        connectSSE();
+        refreshState();
+    </script>
+</body>
+</html>
